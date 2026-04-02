@@ -1,0 +1,13 @@
+spring:
+  application:
+    name: runqueue
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:run_queue_app}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:P4ssword!}
+
+worker:
+  name: runqueue-worker
+  heartbeat-delay-ms: 5000
+  poll-delay-ms: 3000
+  stale-timeout-ms: 30000
