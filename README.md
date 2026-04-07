@@ -7,7 +7,7 @@ It stores job definitions in PostgreSQL, schedules due work automatically, recor
 ## What It Does
 
 - creates and manages scheduled jobs through a REST API
-- supports one-time and cron-based schedules
+- supports one-time schedules and recurring schedules backed by cron
 - executes `HTTP` and `MOCK` jobs
 - records run history in `job_runs`
 - retries failed runs with `NONE`, `FIXED_DELAY`, or `EXPONENTIAL_BACKOFF`
@@ -19,6 +19,7 @@ It stores job definitions in PostgreSQL, schedules due work automatically, recor
 Jobs:
 
 - `POST /api/jobs`
+- `GET /api/jobs/schedule-options`
 - `GET /api/jobs`
 - `GET /api/jobs/{jobId}`
 - `PUT /api/jobs/{jobId}`
@@ -62,7 +63,11 @@ Job request rules:
 
 - `name` is required and unique
 - `scheduleType=ONCE` requires `runAt`
-- `scheduleType=CRON` requires `cronExpression`
+- `scheduleType=CRON` requires either `cronExpression` or `recurringSchedule`
+- `recurringSchedule.mode=EVERY` requires `interval` and `intervalUnit`
+- `recurringSchedule.mode=DAILY` requires `timeOfDay`
+- `recurringSchedule.mode=WEEKLY` requires `dayOfWeek` and `timeOfDay`
+- `recurringSchedule.mode=MONTHLY` requires `dayOfMonth` and `timeOfDay`
 - `maxRetries` must be between `0` and `20`
 
 ## Stack
@@ -198,7 +203,7 @@ curl -X POST http://localhost:8080/api/jobs \
   }'
 ```
 
-Create a cron mock job:
+Create a recurring mock job without raw cron:
 
 ```bash
 curl -X POST http://localhost:8080/api/jobs \
@@ -207,7 +212,11 @@ curl -X POST http://localhost:8080/api/jobs \
     "name": "synthetic-health-check",
     "type": "MOCK",
     "scheduleType": "CRON",
-    "cronExpression": "0 */5 * * * *",
+    "recurringSchedule": {
+      "mode": "EVERY",
+      "interval": 5,
+      "intervalUnit": "MINUTES"
+    },
     "payload": {
       "durationMillis": 500,
       "shouldFail": false
@@ -223,6 +232,12 @@ List jobs:
 
 ```bash
 curl http://localhost:8080/api/jobs
+```
+
+List allowed recurring schedule options:
+
+```bash
+curl http://localhost:8080/api/jobs/schedule-options
 ```
 
 List runs:

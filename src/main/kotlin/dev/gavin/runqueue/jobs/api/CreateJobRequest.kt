@@ -21,6 +21,8 @@ data class CreateJobRequest(
 
     val cronExpression: String? = null,
 
+    val recurringSchedule: RecurringScheduleRequest? = null,
+
     val runAt: Instant? = null,
 
     val payload: Map<String, Any>? = null,

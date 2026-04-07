@@ -18,9 +18,9 @@ class RunsApiIntegrationTest : ApiIntegrationTest() {
             .get("/api/runs")
             .then()
             .statusCode(HttpStatus.OK.value())
-            .body("", hasSize<Any>(2))
-            .body("[0].id", equalTo(newer.id.toString()))
-            .body("[1].id", equalTo(older.id.toString()))
+            .body("content", hasSize<Any>(2))
+            .body("content[0].id", equalTo(newer.id.toString()))
+            .body("content[1].id", equalTo(older.id.toString()))
     }
 
     @Test

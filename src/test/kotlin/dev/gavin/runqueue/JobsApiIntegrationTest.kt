@@ -51,6 +51,39 @@ class JobsApiIntegrationTest : ApiIntegrationTest() {
     }
 
     @Test
+    fun `create cron job accepts recurring schedule instead of raw cron`() {
+        val response =
+            request()
+                .contentType("application/json")
+                .body(
+                    """
+                    {
+                      "name": "every-two-hours",
+                      "type": "MOCK",
+                      "scheduleType": "CRON",
+                      "recurringSchedule": {
+                        "mode": "EVERY",
+                        "interval": 2,
+                        "intervalUnit": "HOURS"
+                      }
+                    }
+                    """.trimIndent()
+                )
+                .post("/api/jobs")
+                .then()
+                .statusCode(HttpStatus.CREATED.value())
+                .body("scheduleType", equalTo("CRON"))
+                .body("cronExpression", equalTo("0 0 */2 * * *"))
+                .body("recurringSchedule.mode", equalTo("EVERY"))
+                .body("recurringSchedule.interval", equalTo(2))
+                .body("recurringSchedule.intervalUnit", equalTo("HOURS"))
+                .extract()
+
+        val persisted = jobRepository.findById(UUID.fromString(response.path("id"))).orElseThrow()
+        kotlin.test.assertEquals("0 0 */2 * * *", persisted.cronExpression)
+    }
+
+    @Test
     fun `list jobs returns latest first`() {
         val older = saveJob(name = "older-job")
         val newer = saveJob(name = "newer-job")
@@ -59,9 +92,9 @@ class JobsApiIntegrationTest : ApiIntegrationTest() {
             .get("/api/jobs")
             .then()
             .statusCode(HttpStatus.OK.value())
-            .body("", hasSize<Any>(2))
-            .body("[0].id", equalTo(newer.id.toString()))
-            .body("[1].id", equalTo(older.id.toString()))
+            .body("content", hasSize<Any>(2))
+            .body("content[0].id", equalTo(newer.id.toString()))
+            .body("content[1].id", equalTo(older.id.toString()))
     }
 
     @Test
@@ -122,6 +155,40 @@ class JobsApiIntegrationTest : ApiIntegrationTest() {
     }
 
     @Test
+    fun `update cron job can replace raw cron with recurring schedule`() {
+        val job = saveJob(
+            name = "recurring-update",
+            scheduleType = dev.gavin.runqueue.jobs.domain.ScheduleType.CRON,
+            cronExpression = "0 */5 * * * *",
+            runAt = null
+        )
+
+        request()
+            .contentType("application/json")
+            .body(
+                """
+                {
+                  "recurringSchedule": {
+                    "mode": "WEEKLY",
+                    "dayOfWeek": "MONDAY",
+                    "timeOfDay": "09:30"
+                  }
+                }
+                """.trimIndent()
+            )
+            .put("/api/jobs/{jobId}", job.id)
+            .then()
+            .statusCode(HttpStatus.OK.value())
+            .body("cronExpression", equalTo("0 30 9 * * 1"))
+            .body("recurringSchedule.mode", equalTo("WEEKLY"))
+            .body("recurringSchedule.dayOfWeek", equalTo("MONDAY"))
+            .body("recurringSchedule.timeOfDay", equalTo("09:30"))
+
+        val persisted = jobRepository.findById(job.id).orElseThrow()
+        kotlin.test.assertEquals("0 30 9 * * 1", persisted.cronExpression)
+    }
+
+    @Test
     fun `delete job marks it as deleted`() {
         val job = saveJob(name = "delete-me")
 
@@ -173,6 +240,59 @@ class JobsApiIntegrationTest : ApiIntegrationTest() {
             .then()
             .statusCode(HttpStatus.BAD_REQUEST.value())
             .body("message", equalTo("runAt is not supported for CRON jobs"))
+    }
+
+    @Test
+    fun `create job returns 400 when cron schedule is missing cron and recurring schedule`() {
+        request()
+            .contentType("application/json")
+            .body(
+                """
+                {
+                  "name": "missing-recurring",
+                  "type": "HTTP",
+                  "scheduleType": "CRON"
+                }
+                """.trimIndent()
+            )
+            .post("/api/jobs")
+            .then()
+            .statusCode(HttpStatus.BAD_REQUEST.value())
+            .body("message", equalTo("cronExpression or recurringSchedule is required for CRON jobs"))
+    }
+
+    @Test
+    fun `create job returns 400 when cron expression and recurring schedule are both provided`() {
+        request()
+            .contentType("application/json")
+            .body(
+                """
+                {
+                  "name": "duplicate-schedule-input",
+                  "type": "HTTP",
+                  "scheduleType": "CRON",
+                  "cronExpression": "0 */5 * * * *",
+                  "recurringSchedule": {
+                    "mode": "DAILY",
+                    "timeOfDay": "09:30"
+                  }
+                }
+                """.trimIndent()
+            )
+            .post("/api/jobs")
+            .then()
+            .statusCode(HttpStatus.BAD_REQUEST.value())
+            .body("message", equalTo("Provide either cronExpression or recurringSchedule, not both"))
+    }
+
+    @Test
+    fun `schedule options lists available recurring modes and units`() {
+        request()
+            .get("/api/jobs/schedule-options")
+            .then()
+            .statusCode(HttpStatus.OK.value())
+            .body("recurringModes", hasItems("EVERY", "DAILY", "WEEKLY", "MONTHLY"))
+            .body("intervalUnits", hasItems("MINUTES", "HOURS"))
     }
 
     @Test

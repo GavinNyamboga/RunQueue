@@ -27,14 +27,15 @@ class JobServiceImpl(
     private val schedulerService: SchedulerService
 ) : JobService {
     override fun createJob(request: CreateJobRequest): JobResponse {
-        validateSchedule(request.scheduleType, request.cronExpression, request.runAt)
+        val cronExpression = resolveCronExpression(request.scheduleType, request.cronExpression, request.recurringSchedule)
+        validateSchedule(request.scheduleType, cronExpression, request.runAt)
 
         val job = Job(
             name = request.name,
             description = request.description,
             type = request.type,
             scheduleType = request.scheduleType,
-            cronExpression = request.cronExpression,
+            cronExpression = cronExpression,
             runAt = request.runAt,
             retryStrategy = request.retryStrategy,
             maxRetries = request.maxRetries,
@@ -43,7 +44,7 @@ class JobServiceImpl(
             payloadJson = request.payload?.let { objectMapper.writeValueAsString(it) },
             nextRunAt = scheduleCalculator.calculateFirstRun(
                 request.scheduleType,
-                request.cronExpression,
+                cronExpression,
                 request.runAt,
             )
         )
@@ -68,7 +69,8 @@ class JobServiceImpl(
         val job = jobRepository.findById(id).orElseThrow { NotFoundException("Job not found with id: $id") }
 
         request.description?.let { job.description = it }
-        request.cronExpression?.let { job.cronExpression = it }
+        val cronExpression = resolveUpdatedCronExpression(job.cronExpression, request.cronExpression, request.recurringSchedule)
+        job.cronExpression = cronExpression
         request.runAt?.let { job.runAt = it }
         request.payload?.let { job.payloadJson = objectMapper.writeValueAsString(it) }
         request.maxRetries?.let { job.maxRetries = it }
@@ -76,6 +78,10 @@ class JobServiceImpl(
         request.timeoutSeconds?.let { job.timeoutSeconds = it }
 
         validateSchedule(job.scheduleType, job.cronExpression, job.runAt)
+        job.nextRunAt = when (job.status) {
+            JobStatus.DELETED -> null
+            else -> scheduleCalculator.calculateFirstRun(job.scheduleType, job.cronExpression, job.runAt)
+        }
 
         val updatedJob = jobRepository.save(job)
         triggerSchedulingIfDue(updatedJob)
@@ -123,11 +129,37 @@ class JobServiceImpl(
             }
 
             ScheduleType.CRON -> {
-                if (cronExpression.isNullOrEmpty()) throw ValidationException("cronExpression is required for CRON jobs")
+                if (cronExpression.isNullOrEmpty()) throw ValidationException("cronExpression or recurringSchedule is required for CRON jobs")
                 if (runAt != null) throw ValidationException("runAt is not supported for CRON jobs")
             }
         }
+    }
 
+    private fun resolveCronExpression(
+        scheduleType: ScheduleType,
+        cronExpression: String?,
+        recurringSchedule: dev.gavin.runqueue.jobs.api.RecurringScheduleRequest?
+    ): String? {
+        if (scheduleType != ScheduleType.CRON) return cronExpression
+        if (!cronExpression.isNullOrBlank() && recurringSchedule != null) {
+            throw ValidationException("Provide either cronExpression or recurringSchedule, not both")
+        }
+        return recurringSchedule?.let(RecurringScheduleMapper::toCronExpression) ?: cronExpression
+    }
+
+    private fun resolveUpdatedCronExpression(
+        existingCronExpression: String?,
+        cronExpression: String?,
+        recurringSchedule: dev.gavin.runqueue.jobs.api.RecurringScheduleRequest?
+    ): String? {
+        if (!cronExpression.isNullOrBlank() && recurringSchedule != null) {
+            throw ValidationException("Provide either cronExpression or recurringSchedule, not both")
+        }
+        return when {
+            recurringSchedule != null -> RecurringScheduleMapper.toCronExpression(recurringSchedule)
+            !cronExpression.isNullOrBlank() -> cronExpression
+            else -> existingCronExpression
+        }
     }
 
     private fun triggerSchedulingIfDue(job: Job) {

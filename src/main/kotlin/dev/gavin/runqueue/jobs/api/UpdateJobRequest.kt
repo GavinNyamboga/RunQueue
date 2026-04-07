@@ -7,6 +7,7 @@ import java.time.Instant
 data class UpdateJobRequest(
     val description: String?,
     val cronExpression: String?,
+    val recurringSchedule: RecurringScheduleRequest?,
     val runAt: Instant?,
     val payload: Map<String, Any?>?,
     @field:Min(0)

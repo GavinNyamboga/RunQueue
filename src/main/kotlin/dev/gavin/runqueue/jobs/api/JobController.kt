@@ -15,6 +15,12 @@ import java.util.*
 class JobController(
     private val jobService: JobService
 ) {
+    @GetMapping("/schedule-options")
+    fun scheduleOptions(): ScheduleOptionsResponse =
+        ScheduleOptionsResponse(
+            recurringModes = RecurringScheduleMode.entries,
+            intervalUnits = RecurringIntervalUnit.entries
+        )
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)

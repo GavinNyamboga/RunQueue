@@ -14,6 +14,7 @@ data class JobResponse(
     val type: JobType,
     val scheduleType: ScheduleType,
     val cronExpression: String?,
+    val recurringSchedule: RecurringScheduleResponse?,
     val runAt: Instant?,
     val status: JobStatus,
     val retryStrategy: RetryStrategy,

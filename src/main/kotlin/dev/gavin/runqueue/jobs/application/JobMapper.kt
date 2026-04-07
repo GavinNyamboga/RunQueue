@@ -11,6 +11,7 @@ fun Job.toResponse(): JobResponse =
         type = type,
         scheduleType = scheduleType,
         cronExpression = cronExpression,
+        recurringSchedule = RecurringScheduleMapper.fromCronExpression(cronExpression),
         runAt = runAt,
         status = status,
         retryStrategy = retryStrategy,
