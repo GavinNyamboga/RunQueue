@@ -27,7 +27,8 @@ class JobServiceImpl(
     private val schedulerService: SchedulerService
 ) : JobService {
     override fun createJob(request: CreateJobRequest): JobResponse {
-        val cronExpression = resolveCronExpression(request.scheduleType, request.cronExpression, request.recurringSchedule)
+        val cronExpression =
+            resolveCronExpression(request.scheduleType, request.cronExpression, request.recurringSchedule)
         validateSchedule(request.scheduleType, cronExpression, request.runAt)
 
         val job = Job(
@@ -69,7 +70,8 @@ class JobServiceImpl(
         val job = jobRepository.findById(id).orElseThrow { NotFoundException("Job not found with id: $id") }
 
         request.description?.let { job.description = it }
-        val cronExpression = resolveUpdatedCronExpression(job.cronExpression, request.cronExpression, request.recurringSchedule)
+        val cronExpression =
+            resolveUpdatedCronExpression(job.cronExpression, request.cronExpression, request.recurringSchedule)
         job.cronExpression = cronExpression
         request.runAt?.let { job.runAt = it }
         request.payload?.let { job.payloadJson = objectMapper.writeValueAsString(it) }
@@ -106,7 +108,9 @@ class JobServiceImpl(
             job.cronExpression,
             job.runAt,
         )
-        return jobRepository.save(job).toResponse()
+        val resumedJob = jobRepository.save(job)
+        triggerSchedulingIfDue(resumedJob)
+        return resumedJob.toResponse()
     }
 
     override fun deleteJob(id: UUID) {
